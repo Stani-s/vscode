@@ -75,7 +75,7 @@ import { createEditorFromSearchResult } from 'vs/workbench/contrib/searchEditor/
 import { ACTIVE_GROUP, IEditorService, SIDE_GROUP } from 'vs/workbench/services/editor/common/editorService';
 import { IPreferencesService, ISettingsEditorOptions } from 'vs/workbench/services/preferences/common/preferences';
 import { ITextQueryBuilderOptions, QueryBuilder } from 'vs/workbench/services/search/common/queryBuilder';
-import { IPatternInfo, ISearchComplete, ISearchConfiguration, ISearchConfigurationProperties, ITextQuery, SearchCompletionExitCode, SearchSortOrder, TextSearchCompleteMessageType, ViewMode } from 'vs/workbench/services/search/common/search';
+import { IPatternInfo, ISearchComplete, ISearchConfiguration, ISearchConfigurationProperties, ISearchViewService, ITextQuery, SearchCompletionExitCode, SearchSortOrder, TextSearchCompleteMessageType, ViewMode } from 'vs/workbench/services/search/common/search';
 import { TextSearchCompleteMessage } from 'vs/workbench/services/search/common/searchExtTypes';
 import { ITextFileService } from 'vs/workbench/services/textfile/common/textfiles';
 import { INotebookService } from 'vs/workbench/contrib/notebook/common/notebookService';
@@ -159,6 +159,8 @@ export class SearchView extends ViewPane {
 	private _visibleMatches: number = 0;
 
 	private _refreshResultsScheduler: RunOnceScheduler;
+
+	private searchViewService: ISearchViewService
 
 	constructor(
 		options: IViewPaneOptions,
@@ -376,6 +378,7 @@ export class SearchView extends ViewPane {
 		this._register(dom.addDisposableListener(this.toggleQueryDetailsButton, dom.EventType.CLICK, e => {
 			dom.EventHelper.stop(e);
 			this.toggleQueryDetails(!this.accessibilityService.isScreenReaderOptimized());
+			this._onDidToggleSearchDetails.fire(true);
 		}));
 		this._register(dom.addDisposableListener(this.toggleQueryDetailsButton, dom.EventType.KEY_UP, (e: KeyboardEvent) => {
 			const event = new StandardKeyboardEvent(e);
@@ -446,8 +449,8 @@ export class SearchView extends ViewPane {
 				updateHasFilePatternKey();
 			}
 		};
-		this._register(this.inputPatternIncludes.onSubmit(onFilePatternSubmit));
-		this._register(this.inputPatternExcludes.onSubmit(onFilePatternSubmit));
+		this._register(this.inputPatternIncludes.onSubmit((e) => { onFilePatternSubmit(e); this._onDidUpdateIncludePattern.fire(this.inputPatternIncludes.getValue().trim()) }));
+		this._register(this.inputPatternExcludes.onSubmit((e) => { onFilePatternSubmit(e); this._onDidUpdateExcludePattern.fire(this.inputPatternExcludes.getValue().trim()) }));
 
 		this.messagesElement = dom.append(this.container, $('.messages.text-search-provider-messages'));
 		if (this.contextService.getWorkbenchState() === WorkbenchState.EMPTY) {
@@ -955,6 +958,7 @@ export class SearchView extends ViewPane {
 	}
 
 	selectNextMatch(): void {
+		this._onDidSelectNextMatch.fire();
 		if (!this.hasSearchResults()) {
 			return;
 		}
@@ -1000,6 +1004,7 @@ export class SearchView extends ViewPane {
 	}
 
 	selectPreviousMatch(): void {
+		this._onDidSelectPreviousMatch.fire();
 		if (!this.hasSearchResults()) {
 			return;
 		}
@@ -1297,21 +1302,25 @@ export class SearchView extends ViewPane {
 	toggleCaseSensitive(): void {
 		this.searchWidget.searchInput?.setCaseSensitive(!this.searchWidget.searchInput.getCaseSensitive());
 		this.triggerQueryChange();
+		this._onDidToggleCaseSensitive.fire(); // inspect and pass on the value
 	}
 
 	toggleWholeWords(): void {
 		this.searchWidget.searchInput?.setWholeWords(!this.searchWidget.searchInput.getWholeWords());
 		this.triggerQueryChange();
+		this._onDidToggleWholeWords.fire();
 	}
 
 	toggleRegex(): void {
 		this.searchWidget.searchInput?.setRegex(!this.searchWidget.searchInput.getRegex());
 		this.triggerQueryChange();
+		this._onDidToggleRegex.fire();
 	}
 
 	togglePreserveCase(): void {
 		this.searchWidget.replaceInput?.setPreserveCase(!this.searchWidget.replaceInput.getPreserveCase());
 		this.triggerQueryChange();
+		this._onDidTogglePreserveCase.fire();
 	}
 
 	setSearchParameters(args: IFindInFilesArgs = {}): void {
@@ -1587,6 +1596,8 @@ export class SearchView extends ViewPane {
 			// Do final render, then expand if just 1 file with less than 50 matches
 			this.onSearchResultsChanged();
 
+			this._onDidSearchInFiles.fire(this.viewModel.searchResult);
+
 			const collapseResults = this.searchConfig.collapseResults;
 			if (collapseResults !== 'alwaysCollapse' && this.viewModel.searchResult.matches().length === 1) {
 				const onlyMatch = this.viewModel.searchResult.matches()[0];
@@ -1839,6 +1850,7 @@ export class SearchView extends ViewPane {
 		const useReplacePreview = this.configurationService.getValue<ISearchConfiguration>().search.useReplacePreview;
 
 		const resource = lineMatch instanceof Match ? lineMatch.parent().resource : (<FileMatch>lineMatch).resource;
+		this._onDidFocus.fire();
 		return (useReplacePreview && this.viewModel.isReplaceActive() && !!this.viewModel.replaceString && !(this.shouldOpenInNotebookEditor(lineMatch, resource))) ?
 			this.replaceService.openReplacePreview(lineMatch, preserveFocus, sideBySide, pinned) :
 			this.open(lineMatch, preserveFocus, sideBySide, pinned, resource);
@@ -2064,6 +2076,8 @@ export class SearchView extends ViewPane {
 
 		this.searchHistoryService.save(history);
 	}
+
+	private _onDid
 
 	private async retrieveFileStats(): Promise<void> {
 		const files = this.searchResult.matches().filter(f => !f.fileStat).map(f => f.resolveFileStat(this.fileService));

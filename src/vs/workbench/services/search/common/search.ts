@@ -50,6 +50,19 @@ export interface ISearchService {
 	registerSearchResultProvider(scheme: string, type: SearchProviderType, provider: ISearchResultProvider): IDisposable;
 }
 
+export interface ISearchViewService {
+	_serviceBrand: undefined;
+	onDidSearchInFiles: Event<ISearchQuery>;
+	onWillSearchInFiles: Event<ISearchQuery>;
+	onDidFocusChanged: Event<boolean>;
+	onDidToggleCaseSensitive: Event<boolean>;
+	onDidToggleWholeWord: Event<boolean>;
+	onDidToggleRegex: Event<boolean>;
+	onDidFilesExcludeChange: Event<void>;
+	onDidSelectNextMatch: Event<string>;
+	onDidSelectPreviousMatch: Event<string>;
+}
+
 /**
  * TODO@roblou - split text from file search entirely, or share code in a more natural way.
  */
